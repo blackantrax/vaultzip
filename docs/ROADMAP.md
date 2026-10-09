@@ -5,11 +5,12 @@
 - ZIP create, extract and list
 - AES-256 encryption
 - Command line interface
+- Desktop app (egui)
 - CI on Windows, macOS and Linux
 
 ## v0.2
 
-- Desktop interface (Tauri) with drag and drop, password strength meter, progress
+- Desktop app: first version done (create, extract, drag and drop, strength meter). Remaining: progress bar, cancel, Windows icon and metadata, Wayland support on Linux
 - Windows Explorer context menu integration
 - Open and extract 7z, tar and gz archives
 

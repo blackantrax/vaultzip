@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/vaultzip-core", "crates/vaultzip-cli"]
+members = ["crates/vaultzip-core", "crates/vaultzip-cli", "crates/vaultzip-gui"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/OWNER/vaultzip"
-rust-version = "1.75"
+rust-version = "1.85"
 
 [profile.release]
 lto = true

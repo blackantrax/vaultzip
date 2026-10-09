@@ -6,7 +6,7 @@ VaultZip runs on Windows, macOS and Linux. Windows is the primary target.
 
 ## Status
 
-Early development (v0.1). The core library and command line tool work today. A desktop interface with drag and drop is next on the roadmap.
+Early development (v0.1). The core library, command line tool and a first desktop app are in place. Windows is tested first; the desktop app has been compiled and linted on all three platforms but still needs hands-on testing on Windows.
 
 ## Features
 
@@ -14,13 +14,16 @@ Early development (v0.1). The core library and command line tool work today. A d
 - AES-256 encryption (WinZip AES, authenticated). Legacy ZipCrypto is never used for writing
 - Zip-slip protection: entries that try to escape the destination folder are rejected
 - Password confirmation and length warning when encrypting
-- Single static binary, no runtime required
+- Desktop app with drag and drop, file pickers, password strength meter and background processing
+- Single binary, no runtime or installer dependencies
 
 ## Quick start
 
-Build from source (Rust 1.75 or newer):
+Build from source (Rust 1.85 or newer). On Linux, install the GTK 3 development package first (libgtk-3-dev on Debian and Ubuntu):
 
     cargo build --release
+
+This produces two programs in target/release: vaultzip-gui (desktop app) and vaultzip (command line).
 
 Create an encrypted archive (you will be prompted for a password):
 
@@ -38,6 +41,7 @@ List contents:
 
 - crates/vaultzip-core: archive engine (library)
 - crates/vaultzip-cli: command line interface
+- crates/vaultzip-gui: desktop application (egui)
 - docs/ROADMAP.md: planned work
 
 ## Security

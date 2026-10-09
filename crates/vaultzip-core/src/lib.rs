@@ -129,6 +129,67 @@ pub fn extract_archive(archive: &Path, dest: &Path, password: Option<&str>) -> R
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Strength {
+    VeryWeak,
+    Weak,
+    Fair,
+    Strong,
+    VeryStrong,
+}
+
+impl Strength {
+    pub fn label(self) -> &'static str {
+        match self {
+            Strength::VeryWeak => "Very weak",
+            Strength::Weak => "Weak",
+            Strength::Fair => "Fair",
+            Strength::Strong => "Strong",
+            Strength::VeryStrong => "Very strong",
+        }
+    }
+}
+
+/// Rough password strength estimate based on length, character variety and
+/// repetition. It is a guide for users, not a guarantee.
+pub fn password_strength(pw: &str) -> Strength {
+    const COMMON: [&str; 8] = [
+        "password", "123456", "qwerty", "letmein", "welcome", "admin", "iloveyou", "azerty",
+    ];
+    let lower = pw.to_lowercase();
+    if COMMON.iter().any(|c| lower.contains(c)) && pw.chars().count() < 16 {
+        return Strength::VeryWeak;
+    }
+    let len = pw.chars().count();
+    if len < 8 {
+        return Strength::VeryWeak;
+    }
+    let mut pool = 0u32;
+    if pw.chars().any(|c| c.is_ascii_lowercase()) {
+        pool += 26;
+    }
+    if pw.chars().any(|c| c.is_ascii_uppercase()) {
+        pool += 26;
+    }
+    if pw.chars().any(|c| c.is_ascii_digit()) {
+        pool += 10;
+    }
+    if pw.chars().any(|c| !c.is_ascii_alphanumeric()) {
+        pool += 33;
+    }
+    let mut seen: Vec<char> = pw.chars().collect();
+    seen.sort_unstable();
+    seen.dedup();
+    let effective = seen.len() as f64 + (len - seen.len()) as f64 / 4.0;
+    let bits = effective * (pool.max(1) as f64).log2();
+    match bits {
+        b if b < 40.0 => Strength::Weak,
+        b if b < 60.0 => Strength::Fair,
+        b if b < 80.0 => Strength::Strong,
+        _ => Strength::VeryStrong,
+    }
+}
+
 fn to_zip_name(rel: &Path) -> String {
     rel.components()
         .filter_map(|c| match c {
@@ -245,5 +306,19 @@ mod format_tests {
         assert_eq!(&bytes[0..4], b"PK\x03\x04");
         let method = u16::from_le_bytes([bytes[8], bytes[9]]);
         assert_eq!(method, 99, "expected WinZip AES marker (method 99)");
+    }
+}
+
+#[cfg(test)]
+mod strength_tests {
+    use super::*;
+
+    #[test]
+    fn strength_levels() {
+        assert_eq!(password_strength("abc"), Strength::VeryWeak);
+        assert_eq!(password_strength("Password1"), Strength::VeryWeak);
+        assert_eq!(password_strength("aaaaaaaaaaaa"), Strength::Weak);
+        assert!(password_strength("correct-Horse-battery-9-staple") >= Strength::Strong);
+        assert!(password_strength("kT9#vQ2$mZ7!pL4@") >= Strength::Strong);
     }
 }

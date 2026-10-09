@@ -24,12 +24,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
       - run: cargo build --release --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
           mkdir dist
-          cp target/${{ matrix.target }}/release/vaultzip${{ matrix.ext }} dist/vaultzip-${{ matrix.target }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/vaultzip${{ matrix.ext }} dist/vaultzip-cli-${{ matrix.target }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/vaultzip-gui${{ matrix.ext }} dist/vaultzip-${{ matrix.target }}${{ matrix.ext }}
           cd dist && (sha256sum * > SHA256SUMS-${{ matrix.target }}.txt 2>/dev/null || shasum -a 256 * > SHA256SUMS-${{ matrix.target }}.txt)
       - uses: softprops/action-gh-release@v2
         with:
