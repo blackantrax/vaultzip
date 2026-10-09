@@ -12,7 +12,8 @@ In scope: archive parsing and extraction, encryption and decryption, path handli
 
 - AES-256 only for encryption. No legacy ZipCrypto for new archives
 - Extraction never writes outside the chosen destination
-- Encrypted entries are fully authenticated before being written to disk
+- Encrypted entries are authenticated while they are extracted; a file that fails authentication is deleted and extraction stops
+- Extraction never overwrites an existing file
 - Passwords are never logged or written to disk
 
 ## Known limitations

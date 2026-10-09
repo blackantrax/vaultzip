@@ -6,7 +6,7 @@ members = ["crates/vaultzip-core", "crates/vaultzip-cli", "crates/vaultzip-gui"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/OWNER/vaultzip"
+repository = "https://github.com/blackantrax/vaultzip"
 rust-version = "1.85"
 
 [profile.release]

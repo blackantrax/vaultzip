@@ -13,6 +13,7 @@ Early development (v0.1). The core library, command line tool and a first deskto
 - Create and extract ZIP archives
 - AES-256 encryption (WinZip AES, authenticated). Legacy ZipCrypto is never used for writing
 - Zip-slip protection: entries that try to escape the destination folder are rejected
+- Extraction never overwrites existing files
 - Password confirmation and length warning when encrypting
 - Desktop app with drag and drop, file pickers, password strength meter, progress bar and cancel
 - Windows Explorer right-click menu: add to archive, add to password-protected archive, open, extract here, extract to folder
@@ -69,6 +70,7 @@ Command line options of the desktop app, used by the menu entries: `--add [--enc
 - crates/vaultzip-cli: command line interface
 - crates/vaultzip-gui: desktop application (egui) and Explorer integration
 - assets: application icon
+- docs/TESTING-WINDOWS.md: step-by-step test guide for Windows
 - docs/ROADMAP.md: planned work
 
 ## Security

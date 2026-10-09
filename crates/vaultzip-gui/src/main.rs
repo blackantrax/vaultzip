@@ -670,7 +670,9 @@ fn main() -> eframe::Result<()> {
     }
 
     // Explorer starts one process per selected item. Merge them into one window.
-    if launch.mode != Mode::Normal && launch.paths.len() == 1 {
+    // Windows only: the temp folder there is per-user, while /tmp on other
+    // systems is shared and another user could inject paths into the queue.
+    if cfg!(windows) && launch.mode != Mode::Normal && launch.paths.len() == 1 {
         let dir = std::env::temp_dir()
             .join("vaultzip-queue")
             .join(launch::queue_key(&launch));

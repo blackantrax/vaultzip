@@ -34,6 +34,8 @@ pub enum Error {
     EmptyPassword,
     #[error("cancelled")]
     Cancelled,
+    #[error("file already exists, not overwritten: {0}")]
+    Exists(PathBuf),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -329,7 +331,19 @@ pub fn extract_archive_with_progress(
             fs::create_dir_all(parent)?;
         }
         progress.set_current(&raw);
-        let mut out = File::create(&target)?;
+        // Never replace an existing file: extracting into a busy folder must
+        // not silently destroy the user's data.
+        let mut out = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&target)
+        {
+            Ok(f) => f,
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                return Err(Error::Exists(target));
+            }
+            Err(e) => return Err(e.into()),
+        };
         // Reading to the end also verifies the AES authentication code.
         let copied = copy_with_progress(&mut file, &mut out, progress);
         drop(out);
@@ -413,6 +427,10 @@ fn to_zip_name(rel: &Path) -> String {
 }
 
 fn safe_join(dest: &Path, name: &str) -> Result<PathBuf> {
+    // A colon would address an NTFS alternate data stream or a drive on Windows.
+    if name.contains(':') {
+        return Err(Error::UnsafePath(name.to_string()));
+    }
     let mut out = dest.to_path_buf();
     for comp in Path::new(&name.replace('\\', "/")).components() {
         match comp {
@@ -488,6 +506,22 @@ mod tests {
         assert!(safe_join(Path::new("/tmp/d"), "../evil.txt").is_err());
         assert!(safe_join(Path::new("/tmp/d"), "/etc/passwd").is_err());
         assert!(safe_join(Path::new("/tmp/d"), "ok/file.txt").is_ok());
+        assert!(safe_join(Path::new("/tmp/d"), "a.txt:hidden").is_err());
+        assert!(safe_join(Path::new("/tmp/d"), "C:evil.txt").is_err());
+    }
+
+    #[test]
+    fn extract_never_overwrites_existing_files() {
+        let t = tempdir().unwrap();
+        let src = sample(t.path());
+        let z = t.path().join("out.zip");
+        create_archive(&[src], &z, None).unwrap();
+        let dest = t.path().join("x");
+        fs::create_dir_all(dest.join("docs")).unwrap();
+        fs::write(dest.join("docs/a.txt"), b"mine").unwrap();
+        let r = extract_archive(&z, &dest, None);
+        assert!(matches!(r, Err(Error::Exists(_))));
+        assert_eq!(fs::read(dest.join("docs/a.txt")).unwrap(), b"mine");
     }
 
     #[test]
