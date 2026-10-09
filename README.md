@@ -14,6 +14,7 @@ Early development (v0.1). The core library, command line tool and a first deskto
 - AES-256 encryption (WinZip AES, authenticated). Legacy ZipCrypto is never used for writing
 - Zip-slip protection: entries that try to escape the destination folder are rejected
 - Extraction never overwrites existing files
+- Four compression levels (Fast, Normal, Maximum, Ultra). Ultra uses the Zopfli encoder for the smallest standard ZIP files. Already-compressed files such as photos, videos and Office documents are stored as-is, which is much faster and costs almost no space
 - Password confirmation and length warning when encrypting
 - Desktop app with drag and drop, file pickers, password strength meter, progress bar and cancel
 - Windows Explorer right-click menu: add to archive, add to password-protected archive, open, extract here, extract to folder
@@ -41,6 +42,10 @@ This produces two programs in target/release: vaultzip-gui (desktop app) and vau
 Create an encrypted archive (you will be prompted for a password):
 
     vaultzip create backup.zip Documents Photos --encrypt
+
+Pick a compression level (fast, normal, maximum or ultra; normal is the default):
+
+    vaultzip create reports.zip Reports --encrypt --level ultra
 
 Extract an archive:
 
