@@ -15,7 +15,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -30,7 +30,7 @@ jobs:
           cp target/${{ matrix.target }}/release/vaultzip dist/vaultzip-cli-${{ matrix.target }}
           cp target/${{ matrix.target }}/release/vaultzip-gui dist/vaultzip-${{ matrix.target }}
           cd dist && (sha256sum * > SHA256SUMS-${{ matrix.target }}.txt 2>/dev/null || shasum -a 256 * > SHA256SUMS-${{ matrix.target }}.txt)
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -48,7 +48,7 @@ jobs:
     env:
       TARGET: x86_64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ env.TARGET }}
@@ -128,7 +128,7 @@ jobs:
             "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)"
           }
           $lines | Set-Content -Encoding ascii "dist/SHA256SUMS-${{ env.TARGET }}.txt"
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           prerelease: ${{ contains(github.ref_name, '-') }}
