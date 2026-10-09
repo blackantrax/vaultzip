@@ -1,5 +1,7 @@
 # Releasing VaultZip
 
+For the very first release, follow docs/FIRST-RELEASE-CHECKLIST.md.
+
 ## Publishing a release
 
 1. Update the version in the root Cargo.toml and commit.

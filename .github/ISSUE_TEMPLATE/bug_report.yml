@@ -1,0 +1,79 @@
+name: Bug report
+description: Something does not work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a problem. If you found a security vulnerability, do not use this form. Use the private security report link on the New issue page instead.
+        Never attach archives that contain private data, and never include your password.
+  - type: input
+    id: version
+    attributes:
+      label: VaultZip version
+      description: Run `vaultzip --version`, or copy the version from the installer file name.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - Windows installer
+        - Portable executable
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - Desktop app
+        - Explorer right-click menu
+        - Command line tool
+        - Installer or uninstaller
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Include any error message exactly as shown.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Select two folders in Explorer
+        2. Right-click and choose Add to password-protected archive
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: archive
+    attributes:
+      label: About the archive (if relevant)
+      description: Was it created by VaultZip or another program? Is it password protected? Roughly how large is it?

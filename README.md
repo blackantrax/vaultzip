@@ -49,6 +49,10 @@ List contents:
 
     vaultzip list backup.zip
 
+## Compatibility
+
+VaultZip writes standard ZIP files with WinZip AES-256 encryption, the same format used by 7-Zip, WinRAR and WinZip. Password-protected archives open in those programs. The built-in zip support in Windows Explorer and the macOS Archive Utility cannot open AES-encrypted ZIP files, so recipients need VaultZip, 7-Zip or similar. Archives without a password open anywhere.
+
 ## Windows Explorer integration
 
 Open the desktop app, expand Settings and choose Add menu. Or run once from a terminal:

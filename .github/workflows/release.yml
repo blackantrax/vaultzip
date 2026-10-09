@@ -34,6 +34,8 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
 
   windows:
     runs-on: windows-latest
@@ -123,3 +125,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
