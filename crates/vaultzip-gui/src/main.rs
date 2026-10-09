@@ -560,7 +560,7 @@ fn drop_zone(ui: &mut egui::Ui, text: &str, filled: bool) {
         egui::Sense::hover(),
     );
     ui.painter()
-        .rect_stroke(rect, 8.0, egui::Stroke::new(1.5, stroke_color));
+        .rect_stroke(rect, 8.0, egui::Stroke::new(1.5_f32, stroke_color));
     ui.painter().text(
         rect.center(),
         egui::Align2::CENTER_CENTER,
