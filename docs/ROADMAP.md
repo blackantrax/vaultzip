@@ -10,7 +10,12 @@
 
 ## v0.2
 
-- Desktop app: first version done (create, extract, drag and drop, strength meter). Remaining: progress bar, cancel, Windows icon and metadata, Wayland support on Linux
+- Desktop app: create, extract, drag and drop, strength meter, progress bar and cancel (done)
+- Windows icon and version information (done)
+- Explorer right-click menu through per-user registry entries (done)
+- Windows 11 modern context menu through a packaged shell extension
+- Windows installer (MSI or Inno Setup) that registers the menu and file associations
+- Wayland support on Linux
 - Windows Explorer context menu integration
 - Open and extract 7z, tar and gz archives
 

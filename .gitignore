@@ -6,3 +6,4 @@ Thumbs.db
 .vscode/
 *.zip
 !tests/fixtures/*.zip
+*.part

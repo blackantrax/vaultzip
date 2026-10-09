@@ -1,11 +1,18 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 
+mod launch;
+mod shell;
+
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use eframe::egui::{self, Color32, RichText};
-use vaultzip_core::{self as core, Strength};
+use launch::{Launch, Mode};
+use vaultzip_core::{self as core, Progress, Strength};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
@@ -13,8 +20,18 @@ enum Tab {
     Extract,
 }
 
+/// Where an opened archive is extracted by default.
+#[derive(PartialEq, Clone, Copy)]
+enum DestMode {
+    /// A new folder named after the archive.
+    Folder,
+    /// The folder that contains the archive.
+    Here,
+}
+
 enum Msg {
     Done(String),
+    Cancelled,
     Failed(String),
 }
 
@@ -33,10 +50,17 @@ struct App {
     needs_password: bool,
     extract_password: String,
     dest: String,
+    // batch extraction started from Explorer
+    auto: Option<DestMode>,
+    pending: VecDeque<PathBuf>,
+    auto_start: bool,
+    batch_done: usize,
     // shared
     status: Option<(bool, String)>,
     busy: bool,
     rx: Option<Receiver<Msg>>,
+    progress: Arc<Progress>,
+    shell_status: Option<String>,
 }
 
 impl Default for App {
@@ -54,9 +78,15 @@ impl Default for App {
             needs_password: false,
             extract_password: String::new(),
             dest: String::new(),
+            auto: None,
+            pending: VecDeque::new(),
+            auto_start: false,
+            batch_done: 0,
             status: None,
             busy: false,
             rx: None,
+            progress: Arc::new(Progress::new()),
+            shell_status: None,
         }
     }
 }
@@ -87,6 +117,38 @@ fn human_size(n: u64) -> String {
 }
 
 impl App {
+    /// Build the starting state from how the program was launched.
+    fn from_launch(launch: Launch) -> Self {
+        let mut app = App::default();
+        match launch.mode {
+            Mode::Add => {
+                app.tab = Tab::Create;
+                app.encrypt = launch.encrypt;
+                for p in launch.paths {
+                    app.add_input(p);
+                }
+            }
+            Mode::Open => {
+                app.tab = Tab::Extract;
+                if let Some(p) = launch.paths.into_iter().next() {
+                    app.load_archive(p, DestMode::Folder);
+                }
+            }
+            Mode::ExtractHere | Mode::ExtractFolder => {
+                app.tab = Tab::Extract;
+                app.auto = Some(if launch.mode == Mode::ExtractHere {
+                    DestMode::Here
+                } else {
+                    DestMode::Folder
+                });
+                app.pending = launch.paths.into();
+                app.advance_pending();
+            }
+            _ => {}
+        }
+        app
+    }
+
     fn handle_drops(&mut self, ctx: &egui::Context) {
         let dropped: Vec<PathBuf> = ctx.input(|i| {
             i.raw
@@ -95,7 +157,7 @@ impl App {
                 .filter_map(|f| f.path.clone())
                 .collect()
         });
-        if dropped.is_empty() {
+        if dropped.is_empty() || self.busy {
             return;
         }
         match self.tab {
@@ -106,7 +168,9 @@ impl App {
             }
             Tab::Extract => {
                 if let Some(p) = dropped.into_iter().next() {
-                    self.load_archive(p);
+                    self.auto = None;
+                    self.pending.clear();
+                    self.load_archive(p, DestMode::Folder);
                 }
             }
         }
@@ -128,7 +192,7 @@ impl App {
         }
     }
 
-    fn load_archive(&mut self, p: PathBuf) {
+    fn load_archive(&mut self, p: PathBuf, mode: DestMode) {
         self.status = None;
         match core::list_archive(&p) {
             Ok(entries) => {
@@ -139,7 +203,10 @@ impl App {
                     .and_then(|s| s.to_str())
                     .unwrap_or("extracted");
                 let dir = p.parent().unwrap_or_else(|| Path::new("."));
-                self.dest = dir.join(stem).display().to_string();
+                self.dest = match mode {
+                    DestMode::Folder => dir.join(stem).display().to_string(),
+                    DestMode::Here => dir.display().to_string(),
+                };
                 self.archive = Some(p);
             }
             Err(e) => {
@@ -150,14 +217,28 @@ impl App {
         }
     }
 
+    /// Load the next queued archive and start it automatically when no
+    /// password has to be typed first.
+    fn advance_pending(&mut self) -> bool {
+        let (Some(mode), Some(next)) = (self.auto, self.pending.pop_front()) else {
+            return false;
+        };
+        self.load_archive(next, mode);
+        if self.archive.is_some() {
+            self.auto_start = !self.needs_password || !self.extract_password.is_empty();
+            true
+        } else {
+            false
+        }
+    }
+
     fn start_create(&mut self, ctx: &egui::Context) {
         let inputs = self.inputs.clone();
         let output = PathBuf::from(self.output.trim());
         let pw = self.encrypt.then(|| self.password.clone());
-        self.spawn(ctx, move || {
-            core::create_archive(&inputs, &output, pw.as_deref())
+        self.spawn(ctx, move |progress| {
+            core::create_archive_with_progress(&inputs, &output, pw.as_deref(), progress)
                 .map(|_| format!("Created {}", output.display()))
-                .map_err(|e| e.to_string())
         });
     }
 
@@ -167,26 +248,28 @@ impl App {
         };
         let dest = PathBuf::from(self.dest.trim());
         let pw = self.needs_password.then(|| self.extract_password.clone());
-        self.spawn(ctx, move || {
-            core::extract_archive(&archive, &dest, pw.as_deref())
+        self.spawn(ctx, move |progress| {
+            core::extract_archive_with_progress(&archive, &dest, pw.as_deref(), progress)
                 .map(|_| format!("Extracted to {}", dest.display()))
-                .map_err(|e| e.to_string())
         });
     }
 
     fn spawn<F>(&mut self, ctx: &egui::Context, job: F)
     where
-        F: FnOnce() -> Result<String, String> + Send + 'static,
+        F: FnOnce(&Progress) -> core::Result<String> + Send + 'static,
     {
         let (tx, rx) = channel();
         let ctx = ctx.clone();
+        let progress = Arc::clone(&self.progress);
+        progress.reset();
         self.busy = true;
         self.status = None;
         self.rx = Some(rx);
         thread::spawn(move || {
-            let msg = match job() {
+            let msg = match job(&progress) {
                 Ok(m) => Msg::Done(m),
-                Err(e) => Msg::Failed(e),
+                Err(core::Error::Cancelled) => Msg::Cancelled,
+                Err(e) => Msg::Failed(e.to_string()),
             };
             let _ = tx.send(msg);
             ctx.request_repaint();
@@ -194,14 +277,43 @@ impl App {
     }
 
     fn poll(&mut self) {
-        if let Some(rx) = &self.rx {
-            if let Ok(msg) = rx.try_recv() {
-                self.busy = false;
-                self.rx = None;
-                self.status = Some(match msg {
-                    Msg::Done(m) => (true, m),
-                    Msg::Failed(e) => (false, e),
-                });
+        let msg = match &self.rx {
+            Some(rx) => match rx.try_recv() {
+                Ok(m) => m,
+                Err(_) => return,
+            },
+            None => return,
+        };
+        self.busy = false;
+        self.rx = None;
+        match msg {
+            Msg::Done(m) => {
+                if self.auto.is_some() {
+                    self.batch_done += 1;
+                    if !self.pending.is_empty() {
+                        if self.advance_pending() {
+                            self.status = Some((
+                                true,
+                                format!("Extracted {} archive(s), continuing...", self.batch_done),
+                            ));
+                        }
+                        return;
+                    }
+                    if self.batch_done > 1 {
+                        self.status =
+                            Some((true, format!("Extracted {} archives", self.batch_done)));
+                        return;
+                    }
+                }
+                self.status = Some((true, m));
+            }
+            Msg::Cancelled => {
+                self.pending.clear();
+                self.status = Some((false, "Cancelled. No partial archive was kept.".into()));
+            }
+            Msg::Failed(e) => {
+                self.pending.clear();
+                self.status = Some((false, e));
             }
         }
     }
@@ -308,12 +420,17 @@ impl App {
     fn extract_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.add_space(6.0);
         drop_zone(ui, "Drop a ZIP archive here", self.archive.is_some());
-        if ui.button("Open archive").clicked() {
+        if ui
+            .add_enabled(!self.busy, egui::Button::new("Open archive"))
+            .clicked()
+        {
             if let Some(p) = rfd::FileDialog::new()
                 .add_filter("ZIP archive", &["zip"])
                 .pick_file()
             {
-                self.load_archive(p);
+                self.auto = None;
+                self.pending.clear();
+                self.load_archive(p, DestMode::Folder);
             }
         }
         if let Some(a) = &self.archive {
@@ -362,6 +479,67 @@ impl App {
             }
         }
     }
+
+    fn progress_ui(&self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let p = &self.progress;
+        if p.total() == 0 {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Preparing...");
+            });
+        } else {
+            ui.add(
+                egui::ProgressBar::new(p.fraction())
+                    .show_percentage()
+                    .desired_width(ui.available_width().min(480.0)),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "{} of {}   {}",
+                    human_size(p.done()),
+                    human_size(p.total()),
+                    p.current()
+                ))
+                .weak(),
+            );
+        }
+        if ui.button("Cancel").clicked() {
+            p.cancel();
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+    }
+
+    fn settings_ui(&mut self, ui: &mut egui::Ui) {
+        if !shell::supported() {
+            return;
+        }
+        ui.add_space(6.0);
+        ui.collapsing("Settings", |ui| {
+            ui.label("Windows Explorer right-click menu");
+            ui.horizontal(|ui| {
+                let installed = shell::is_installed();
+                if ui
+                    .button(if installed { "Repair menu" } else { "Add menu" })
+                    .clicked()
+                {
+                    self.shell_status = Some(match shell::install() {
+                        Ok(()) => "Menu added. Right-click a file, folder or ZIP.".to_string(),
+                        Err(e) => e,
+                    });
+                }
+                if installed && ui.button("Remove menu").clicked() {
+                    self.shell_status = Some(match shell::uninstall() {
+                        Ok(()) => "Menu removed.".to_string(),
+                        Err(e) => e,
+                    });
+                }
+            });
+            ui.label(RichText::new("On Windows 11, look under Show more options.").weak());
+            if let Some(s) = &self.shell_status {
+                ui.label(s);
+            }
+        });
+    }
 }
 
 fn drop_zone(ui: &mut egui::Ui, text: &str, filled: bool) {
@@ -397,6 +575,10 @@ impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.poll();
         self.handle_drops(ctx);
+        if self.auto_start && !self.busy && self.archive.is_some() {
+            self.auto_start = false;
+            self.start_extract(ctx);
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.heading("VaultZip");
@@ -404,8 +586,10 @@ impl eframe::App for App {
             });
             ui.separator();
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.tab, Tab::Create, "Create");
-                ui.selectable_value(&mut self.tab, Tab::Extract, "Extract");
+                ui.add_enabled_ui(!self.busy, |ui| {
+                    ui.selectable_value(&mut self.tab, Tab::Create, "Create");
+                    ui.selectable_value(&mut self.tab, Tab::Extract, "Extract");
+                });
             });
             ui.separator();
             match self.tab {
@@ -414,10 +598,7 @@ impl eframe::App for App {
             }
             ui.add_space(8.0);
             if self.busy {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label("Working...");
-                });
+                self.progress_ui(ui, ctx);
             }
             if let Some((ok, msg)) = &self.status {
                 let color = if *ok {
@@ -427,17 +608,73 @@ impl eframe::App for App {
                 };
                 ui.colored_label(color, msg);
             }
+            self.settings_ui(ui);
         });
     }
 }
 
+fn notify(text: &str) {
+    let _ = rfd::MessageDialog::new()
+        .set_title("VaultZip")
+        .set_description(text)
+        .show();
+}
+
 fn main() -> eframe::Result<()> {
+    let mut launch = match launch::parse(std::env::args().skip(1)) {
+        Ok(l) => l,
+        Err(e) => {
+            notify(&format!("{e}\n\nUsage: vaultzip-gui [--add [--encrypt] | --open | --extract-here | --extract-folder] FILES"));
+            return Ok(());
+        }
+    };
+
+    match launch.mode {
+        Mode::InstallShell => {
+            match shell::install() {
+                Ok(()) => notify("The VaultZip right-click menu was added."),
+                Err(e) => notify(&e),
+            }
+            return Ok(());
+        }
+        Mode::UninstallShell => {
+            match shell::uninstall() {
+                Ok(()) => notify("The VaultZip right-click menu was removed."),
+                Err(e) => notify(&e),
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+
+    // Explorer starts one process per selected item. Merge them into one window.
+    if launch.mode != Mode::Normal && launch.paths.len() == 1 {
+        let dir = std::env::temp_dir()
+            .join("vaultzip-queue")
+            .join(launch::queue_key(&launch));
+        match launch::coalesce(&dir, &launch.paths, Duration::from_millis(600)) {
+            Ok(Some(all)) => launch.paths = all,
+            Ok(None) => return Ok(()),
+            Err(_) => {}
+        }
+    }
+
+    let icon = egui::IconData {
+        rgba: include_bytes!("../../../assets/icon-64.rgba").to_vec(),
+        width: 64,
+        height: 64,
+    };
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([640.0, 560.0])
-            .with_min_inner_size([560.0, 480.0])
+            .with_inner_size([640.0, 600.0])
+            .with_min_inner_size([560.0, 500.0])
+            .with_icon(icon)
             .with_drag_and_drop(true),
         ..Default::default()
     };
-    eframe::run_native("VaultZip", options, Box::new(|_cc| Box::<App>::default()))
+    eframe::run_native(
+        "VaultZip",
+        options,
+        Box::new(move |_cc| Box::new(App::from_launch(launch))),
+    )
 }
