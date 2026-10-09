@@ -6,6 +6,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "vaultzip"
@@ -15,3 +16,6 @@ path = "src/main.rs"
 vaultzip-core = { path = "../vaultzip-core" }
 clap = { version = "4", features = ["derive"] }
 rpassword = "7"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

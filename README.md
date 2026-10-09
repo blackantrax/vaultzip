@@ -19,6 +19,16 @@ Early development (v0.1). The core library, command line tool and a first deskto
 - Safe by default: archives are built in a temporary file and only moved into place when complete, so a cancelled or failed run never leaves a broken archive
 - Single binary, no runtime or installer dependencies
 
+## Install on Windows
+
+Download VaultZip-Setup-x.y.z.exe from the Releases page and run it. The installer needs no administrator rights and installs for the current user. It offers to add the Explorer right-click menu and to list VaultZip under Open with for ZIP files. Windows does not let installers take over the default app, so to make VaultZip the default for ZIP files, right-click a ZIP, choose Open with, then Choose another app, select VaultZip and tick Always.
+
+Each release also lists SHA-256 checksums. Verify the download before running it:
+
+    certutil -hashfile VaultZip-Setup-x.y.z.exe SHA256
+
+To uninstall, use Settings, Apps, Installed apps. The right-click menu and Open with entries are removed with it.
+
 ## Quick start
 
 Build from source (Rust 1.85 or newer). On Linux, install the GTK 3 development package first (libgtk-3-dev on Debian and Ubuntu):

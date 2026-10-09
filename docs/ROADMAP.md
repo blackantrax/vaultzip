@@ -14,7 +14,8 @@
 - Windows icon and version information (done)
 - Explorer right-click menu through per-user registry entries (done)
 - Windows 11 modern context menu through a packaged shell extension
-- Windows installer (MSI or Inno Setup) that registers the menu and file associations
+- Windows installer (Inno Setup) with right-click menu, Open with entry and clean uninstall (done, tested in CI)
+- Code signing for the installer and executables
 - Wayland support on Linux
 - Windows Explorer context menu integration
 - Open and extract 7z, tar and gz archives
@@ -24,7 +25,7 @@
 - Create 7z archives
 - Encrypted file names
 - Split archives and recovery data
-- Signed Windows installer (MSI) and macOS notarization
+- macOS notarization and a macOS installer
 
 ## Trust work (ongoing)
 

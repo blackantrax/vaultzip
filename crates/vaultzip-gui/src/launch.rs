@@ -24,6 +24,8 @@ pub enum Mode {
 pub struct Launch {
     pub mode: Mode,
     pub encrypt: bool,
+    /// Suppress dialogs (used by the installer).
+    pub silent: bool,
     pub paths: Vec<PathBuf>,
 }
 
@@ -53,6 +55,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Launch, String> 
             "--install-shell" => set_mode(&mut launch, Mode::InstallShell)?,
             "--uninstall-shell" => set_mode(&mut launch, Mode::UninstallShell)?,
             "--encrypt" => launch.encrypt = true,
+            "--silent" => launch.silent = true,
             s if s.starts_with("--") => return Err(format!("unknown option: {s}")),
             _ => launch.paths.push(PathBuf::from(arg)),
         }
@@ -217,6 +220,10 @@ mod tests {
         assert_eq!(l.mode, Mode::ExtractHere);
         let l = parse(args(&["--install-shell"])).unwrap();
         assert_eq!(l.mode, Mode::InstallShell);
+        assert!(!l.silent);
+        let l = parse(args(&["--uninstall-shell", "--silent"])).unwrap();
+        assert_eq!(l.mode, Mode::UninstallShell);
+        assert!(l.silent);
     }
 
     #[test]

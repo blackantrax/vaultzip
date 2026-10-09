@@ -22,3 +22,20 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --workspace
+      - name: Build installer
+        shell: pwsh
+        run: ./installer/build-installer.ps1 -Version 0.0.0-ci -BuildDir target/release -OutDir dist
+      - name: Install and uninstall smoke test
+        shell: pwsh
+        run: ./installer/smoke-test.ps1 -Installer (Get-ChildItem dist/VaultZip-Setup-*.exe | Select-Object -First 1).FullName
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VaultZip-installer-ci
+          path: dist/VaultZip-Setup-*.exe

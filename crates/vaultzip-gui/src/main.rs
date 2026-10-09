@@ -620,6 +620,26 @@ fn notify(text: &str) {
         .show();
 }
 
+/// Show the outcome of a menu change. Failures always end the process with
+/// exit code 1 so installers and scripts can detect them.
+fn report(result: Result<(), String>, ok_text: &str, silent: bool) {
+    match result {
+        Ok(()) => {
+            if !silent {
+                notify(ok_text);
+            }
+        }
+        Err(e) => {
+            if silent {
+                eprintln!("{e}");
+            } else {
+                notify(&e);
+            }
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() -> eframe::Result<()> {
     let mut launch = match launch::parse(std::env::args().skip(1)) {
         Ok(l) => l,
@@ -631,17 +651,19 @@ fn main() -> eframe::Result<()> {
 
     match launch.mode {
         Mode::InstallShell => {
-            match shell::install() {
-                Ok(()) => notify("The VaultZip right-click menu was added."),
-                Err(e) => notify(&e),
-            }
+            report(
+                shell::install(),
+                "The VaultZip right-click menu was added.",
+                launch.silent,
+            );
             return Ok(());
         }
         Mode::UninstallShell => {
-            match shell::uninstall() {
-                Ok(()) => notify("The VaultZip right-click menu was removed."),
-                Err(e) => notify(&e),
-            }
+            report(
+                shell::uninstall(),
+                "The VaultZip right-click menu was removed.",
+                launch.silent,
+            );
             return Ok(());
         }
         _ => {}

@@ -2793,6 +2793,7 @@ dependencies = [
  "clap",
  "rpassword",
  "vaultzip-core",
+ "winresource",
 ]
 
 [[package]]
