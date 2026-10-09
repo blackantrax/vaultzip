@@ -5,7 +5,11 @@ use clap::{Parser, Subcommand};
 use vaultzip_core as core;
 
 #[derive(Parser)]
-#[command(name = "vaultzip", version, about = "Free archiver with AES-256 password protection")]
+#[command(
+    name = "vaultzip",
+    version,
+    about = "Free archiver with AES-256 password protection"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -51,7 +55,11 @@ fn prompt(confirm: bool) -> Result<String, String> {
 
 fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
-        Command::Create { output, inputs, encrypt } => {
+        Command::Create {
+            output,
+            inputs,
+            encrypt,
+        } => {
             let pw = if encrypt { Some(prompt(true)?) } else { None };
             core::create_archive(&inputs, &output, pw.as_deref()).map_err(|e| e.to_string())?;
             println!("Created {}", output.display());
@@ -67,7 +75,12 @@ fn run(cli: Cli) -> Result<(), String> {
         }
         Command::List { archive } => {
             for e in core::list_archive(&archive).map_err(|e| e.to_string())? {
-                println!("{:>12}  {}  {}", e.size, if e.encrypted { "enc" } else { "   " }, e.name);
+                println!(
+                    "{:>12}  {}  {}",
+                    e.size,
+                    if e.encrypted { "enc" } else { "   " },
+                    e.name
+                );
             }
         }
     }

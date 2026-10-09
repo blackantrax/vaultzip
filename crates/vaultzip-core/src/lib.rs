@@ -7,7 +7,9 @@ use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use walkdir::WalkDir;
-use zip::{result::ZipError, write::FileOptions, AesMode, CompressionMethod, ZipArchive, ZipWriter};
+use zip::{
+    result::ZipError, write::FileOptions, AesMode, CompressionMethod, ZipArchive, ZipWriter,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -59,7 +61,8 @@ pub fn create_archive(inputs: &[PathBuf], output: &Path, password: Option<&str>)
             if name.is_empty() {
                 continue;
             }
-            let mut opts = FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
+            let mut opts =
+                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
             if let Some(p) = password {
                 opts = opts.with_aes_encryption(AesMode::Aes256, p);
             }
@@ -172,7 +175,10 @@ mod tests {
         create_archive(&[src], &z, None).unwrap();
         let dest = t.path().join("x");
         extract_archive(&z, &dest, None).unwrap();
-        assert_eq!(fs::read(dest.join("docs/sub/b.txt")).unwrap(), b"nested file");
+        assert_eq!(
+            fs::read(dest.join("docs/sub/b.txt")).unwrap(),
+            b"nested file"
+        );
     }
 
     #[test]
@@ -181,7 +187,10 @@ mod tests {
         let src = sample(t.path());
         let z = t.path().join("out.zip");
         create_archive(&[src], &z, Some("correct horse")).unwrap();
-        assert!(list_archive(&z).unwrap().iter().any(|e| !e.is_dir && e.encrypted));
+        assert!(list_archive(&z)
+            .unwrap()
+            .iter()
+            .any(|e| !e.is_dir && e.encrypted));
         let dest = t.path().join("x");
         extract_archive(&z, &dest, Some("correct horse")).unwrap();
         assert_eq!(fs::read(dest.join("docs/a.txt")).unwrap(), b"hello world");
@@ -194,7 +203,10 @@ mod tests {
         let z = t.path().join("out.zip");
         create_archive(&[src], &z, Some("secret")).unwrap();
         let d = t.path().join("x");
-        assert!(matches!(extract_archive(&z, &d, None), Err(Error::PasswordRequired)));
+        assert!(matches!(
+            extract_archive(&z, &d, None),
+            Err(Error::PasswordRequired)
+        ));
         assert!(extract_archive(&z, &d, Some("nope")).is_err());
     }
 
