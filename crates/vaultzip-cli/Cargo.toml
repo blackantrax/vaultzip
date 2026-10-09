@@ -1,0 +1,17 @@
+[package]
+name = "vaultzip"
+description = "Free, open-source archiver with strong AES-256 password protection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vaultzip"
+path = "src/main.rs"
+
+[dependencies]
+vaultzip-core = { path = "../vaultzip-core" }
+clap = { version = "~4.4", features = ["derive"] }
+rpassword = "=7.3.1"

@@ -1,0 +1,16 @@
+[package]
+name = "vaultzip-core"
+description = "Core library for VaultZip: ZIP archives with AES-256 encryption"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zip = { version = "=2.4.2", default-features = false, features = ["deflate", "aes-crypto"] }
+walkdir = "2"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "=3.10.1"
