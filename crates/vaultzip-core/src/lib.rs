@@ -129,6 +129,57 @@ impl Progress {
     }
 }
 
+/// How hard to compress. Every level writes standard Deflate, so archives
+/// open in any ZIP program.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Level {
+    /// Quickest, slightly larger archives.
+    Fast,
+    #[default]
+    Normal,
+    /// Best regular Deflate.
+    Maximum,
+    /// Zopfli: a few percent smaller than Maximum, many times slower.
+    Ultra,
+}
+
+impl Level {
+    pub const ALL: [Level; 4] = [Level::Fast, Level::Normal, Level::Maximum, Level::Ultra];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Level::Fast => "Fast",
+            Level::Normal => "Normal",
+            Level::Maximum => "Maximum",
+            Level::Ultra => "Ultra",
+        }
+    }
+
+    /// Level passed to the zip crate. Values above 9 select Zopfli with
+    /// (value - 9) iterations; 24 matches Zopfli's own default of 15.
+    fn deflate_level(self) -> i64 {
+        match self {
+            Level::Fast => 1,
+            Level::Normal => 6,
+            Level::Maximum => 9,
+            Level::Ultra => 24,
+        }
+    }
+}
+
+/// Formats that are already compressed. Deflating them again wastes time and
+/// saves almost nothing, so they are stored as-is (still encrypted).
+fn is_precompressed(path: &Path) -> bool {
+    const EXTS: &[&str] = &[
+        "zip", "7z", "rar", "gz", "tgz", "bz2", "xz", "zst", "cab", "jpg", "jpeg", "png", "gif",
+        "webp", "heic", "avif", "mp3", "aac", "m4a", "ogg", "opus", "flac", "mp4", "m4v", "mov",
+        "mkv", "webm", "avi", "docx", "xlsx", "pptx", "odt", "ods", "odp", "epub", "jar", "apk",
+    ];
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| EXTS.iter().any(|x| x.eq_ignore_ascii_case(e)))
+}
+
 const CHUNK: usize = 64 * 1024;
 
 fn copy_with_progress<R: Read, W: Write>(
@@ -151,17 +202,18 @@ fn copy_with_progress<R: Read, W: Write>(
 /// Create a ZIP archive from files and folders. With a password, every
 /// file is encrypted with AES-256 (WinZip AES, authenticated).
 pub fn create_archive(inputs: &[PathBuf], output: &Path, password: Option<&str>) -> Result<()> {
-    create_archive_with_progress(inputs, output, password, &Progress::new())
+    create_archive_with_progress(inputs, output, password, Level::Normal, &Progress::new())
 }
 
-/// Like [`create_archive`], with progress reporting and cancellation.
-/// The archive is written to a temporary file next to `output` and moved
-/// into place on success, so a failed or cancelled run leaves nothing behind
-/// and never damages an existing archive.
+/// Like [`create_archive`], with a compression level, progress reporting and
+/// cancellation. The archive is written to a temporary file next to `output`
+/// and moved into place on success, so a failed or cancelled run leaves
+/// nothing behind and never damages an existing archive.
 pub fn create_archive_with_progress(
     inputs: &[PathBuf],
     output: &Path,
     password: Option<&str>,
+    level: Level,
     progress: &Progress,
 ) -> Result<()> {
     if let Some(p) = password {
@@ -175,7 +227,7 @@ pub fn create_archive_with_progress(
         }
     }
     let part = part_path(output);
-    let result = build_archive(inputs, output, &part, password, progress);
+    let result = build_archive(inputs, output, &part, password, level, progress);
     match result {
         Ok(()) => {
             if let Err(e) = fs::rename(&part, output) {
@@ -205,6 +257,7 @@ fn build_archive(
     output: &Path,
     part: &Path,
     password: Option<&str>,
+    level: Level,
     progress: &Progress,
 ) -> Result<()> {
     let skip: Vec<PathBuf> = [output, part]
@@ -244,14 +297,20 @@ fn build_archive(
             if name.is_empty() {
                 continue;
             }
-            let mut opts =
-                FileOptions::<()>::default().compression_method(CompressionMethod::Deflated);
-            if let Some(p) = password {
-                opts = opts.with_aes_encryption(AesMode::Aes256, p);
-            }
             if item.file_type().is_dir() {
-                writer.add_directory(name, opts)?;
+                // Directories are always stored unencrypted; they hold no data.
+                writer.add_directory(name, FileOptions::<()>::default())?;
             } else if item.file_type().is_file() {
+                let mut opts = if is_precompressed(item.path()) {
+                    FileOptions::<()>::default().compression_method(CompressionMethod::Stored)
+                } else {
+                    FileOptions::<()>::default()
+                        .compression_method(CompressionMethod::Deflated)
+                        .compression_level(Some(level.deflate_level()))
+                };
+                if let Some(p) = password {
+                    opts = opts.with_aes_encryption(AesMode::Aes256, p);
+                }
                 progress.set_current(&name);
                 writer.start_file(name, opts)?;
                 let mut src = File::open(item.path())?;
@@ -587,7 +646,7 @@ mod progress_tests {
         let f = big_file(t.path());
         let z = t.path().join("o.zip");
         let p = Progress::new();
-        create_archive_with_progress(&[f], &z, Some("pw-123456789"), &p).unwrap();
+        create_archive_with_progress(&[f], &z, Some("pw-123456789"), Level::Normal, &p).unwrap();
         assert_eq!(p.total(), (CHUNK * 5 + 123) as u64);
         assert_eq!(p.done(), p.total());
         assert!((p.fraction() - 1.0).abs() < f32::EPSILON);
@@ -609,7 +668,7 @@ mod progress_tests {
         let z = t.path().join("o.zip");
         let p = Progress::new();
         p.cancel();
-        let r = create_archive_with_progress(&[f], &z, None, &p);
+        let r = create_archive_with_progress(&[f], &z, None, Level::Normal, &p);
         assert!(matches!(r, Err(Error::Cancelled)));
         assert!(!z.exists());
         assert!(!part_path(&z).exists());
@@ -623,7 +682,8 @@ mod progress_tests {
         let p = Progress::new();
         p.cancel();
         let f = big_file(t.path());
-        assert!(create_archive_with_progress(&[f], &z, None, &p).is_err());
+        let r = create_archive_with_progress(&[f], &z, None, Level::Normal, &p);
+        assert!(r.is_err());
         assert_eq!(fs::read(&z).unwrap(), b"existing");
     }
 
@@ -656,5 +716,61 @@ mod progress_tests {
             .collect();
         assert!(names.iter().any(|n| n == "docs/a.txt"));
         assert!(!names.iter().any(|n| n.contains("docs.zip")));
+    }
+}
+
+#[cfg(test)]
+mod level_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn text(dir: &Path) -> [PathBuf; 1] {
+        let f = dir.join("notes.txt");
+        let line = "VaultZip compresses repetitive text such as logs and e-mails.\n";
+        fs::write(&f, line.repeat(500)).unwrap();
+        [f]
+    }
+
+    #[test]
+    fn every_level_roundtrips_with_a_password() {
+        let t = tempdir().unwrap();
+        let input = text(t.path());
+        for level in Level::ALL {
+            let z = t.path().join(format!("{}.zip", level.label()));
+            let p = Progress::new();
+            create_archive_with_progress(&input, &z, Some("pw-123456789"), level, &p).unwrap();
+            let dest = t.path().join(level.label());
+            extract_archive(&z, &dest, Some("pw-123456789")).unwrap();
+            let back = fs::read(dest.join("notes.txt")).unwrap();
+            assert_eq!(back, fs::read(&input[0]).unwrap());
+        }
+    }
+
+    #[test]
+    fn higher_levels_are_never_larger() {
+        let t = tempdir().unwrap();
+        let input = text(t.path());
+        let sizes: Vec<u64> = Level::ALL
+            .iter()
+            .map(|&level| {
+                let z = t.path().join(format!("{}.zip", level.label()));
+                let p = Progress::new();
+                create_archive_with_progress(&input, &z, None, level, &p).unwrap();
+                list_archive(&z).unwrap()[0].compressed_size
+            })
+            .collect();
+        assert!(sizes.windows(2).all(|w| w[1] <= w[0]), "sizes: {sizes:?}");
+    }
+
+    #[test]
+    fn precompressed_files_are_stored() {
+        let t = tempdir().unwrap();
+        let f = t.path().join("photo.JPG");
+        fs::write(&f, vec![1u8; 4096]).unwrap();
+        let z = t.path().join("o.zip");
+        let p = Progress::new();
+        create_archive_with_progress(&[f], &z, None, Level::Ultra, &p).unwrap();
+        let e = &list_archive(&z).unwrap()[0];
+        assert_eq!(e.compressed_size, e.size, "jpg must be stored");
     }
 }

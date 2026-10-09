@@ -36,6 +36,8 @@ Make a test folder, for example `C:\VZTest`, with a few files of different kinds
 - [ ] **Encrypted archive:** tick password protection. Type a weak password such as `abc123`. The strength meter shows red. Type a long one, for example `Correct-Horse-Battery-42`. It turns green.
 - [ ] Type a different value in Confirm. "Passwords do not match" appears and Create archive is disabled.
 - [ ] Create the encrypted archive. The archive opens in Windows Explorer, but the files inside cannot be read. This is expected: Explorer does not support AES encryption.
+- [ ] **Compression levels:** archive the same folder of text files or e-mails four times, once with each Compression setting (Fast, Normal, Maximum, Ultra), saving under a different name each time. Each level is the same size or smaller than the one before. Ultra is noticeably slower. All four open in 7-Zip and in Windows Explorer (when not encrypted).
+- [ ] **Already-compressed files:** archive a folder of photos or videos at Ultra. It finishes about as fast as Fast, because those files are stored without recompressing.
 - [ ] **Progress and cancel:** archive a large folder (a few GB, for example a Videos folder) and click Cancel halfway. No `.zip` or `.zip.part` file is left behind.
 
 ## 4. Extract archives
@@ -113,7 +115,7 @@ In PowerShell:
 ```powershell
 $vz = "$env:LOCALAPPDATA\Programs\VaultZip\vaultzip.exe"
 & $vz --version
-& $vz create C:\VZTest\cli.zip C:\VZTest\safe.txt --encrypt
+& $vz create C:\VZTest\cli.zip C:\VZTest\safe.txt --encrypt --level ultra
 & $vz list C:\VZTest\cli.zip
 & $vz extract C:\VZTest\cli.zip --dest C:\VZTest\cli-out
 ```

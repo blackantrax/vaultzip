@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use eframe::egui::{self, Color32, RichText};
 use launch::{Launch, Mode};
-use vaultzip_core::{self as core, Progress, Strength};
+use vaultzip_core::{self as core, Level, Progress, Strength};
 
 #[derive(PartialEq, Clone, Copy)]
 enum Tab {
@@ -44,6 +44,7 @@ struct App {
     password: String,
     confirm: String,
     show_password: bool,
+    level: Level,
     // extract
     archive: Option<PathBuf>,
     entries: Vec<core::Entry>,
@@ -73,6 +74,7 @@ impl Default for App {
             password: String::new(),
             confirm: String::new(),
             show_password: false,
+            level: Level::Normal,
             archive: None,
             entries: Vec::new(),
             needs_password: false,
@@ -98,6 +100,15 @@ fn strength_color(s: Strength) -> Color32 {
         Strength::Fair => Color32::from_rgb(210, 180, 40),
         Strength::Strong => Color32::from_rgb(90, 170, 70),
         Strength::VeryStrong => Color32::from_rgb(40, 150, 90),
+    }
+}
+
+fn level_hint(level: Level) -> &'static str {
+    match level {
+        Level::Fast => "Quickest, slightly larger",
+        Level::Normal => "Good balance",
+        Level::Maximum => "Smaller, a little slower",
+        Level::Ultra => "Smallest, much slower. Best for documents",
     }
 }
 
@@ -236,8 +247,9 @@ impl App {
         let inputs = self.inputs.clone();
         let output = PathBuf::from(self.output.trim());
         let pw = self.encrypt.then(|| self.password.clone());
+        let level = self.level;
         self.spawn(ctx, move |progress| {
-            core::create_archive_with_progress(&inputs, &output, pw.as_deref(), progress)
+            core::create_archive_with_progress(&inputs, &output, pw.as_deref(), level, progress)
                 .map(|_| format!("Created {}", output.display()))
         });
     }
@@ -368,6 +380,18 @@ impl App {
                     self.output = p.display().to_string();
                 }
             }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Compression");
+            egui::ComboBox::from_id_source("level")
+                .selected_text(self.level.label())
+                .show_ui(ui, |ui| {
+                    for level in Level::ALL {
+                        ui.selectable_value(&mut self.level, level, level.label());
+                    }
+                });
+            ui.label(RichText::new(level_hint(self.level)).weak());
         });
 
         ui.add_space(6.0);
