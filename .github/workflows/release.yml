@@ -4,20 +4,16 @@ on:
     tags: ["v*"]
 permissions:
   contents: write
+  id-token: write
 jobs:
-  build:
+  unix:
     strategy:
       matrix:
         include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            ext: .exe
           - os: macos-latest
             target: aarch64-apple-darwin
-            ext: ""
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            ext: ""
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -28,21 +24,102 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev
       - run: cargo build --release --target ${{ matrix.target }}
-      - name: Build Windows installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $version = "${{ github.ref_name }}".TrimStart("v")
-          ./installer/build-installer.ps1 -Version $version -BuildDir "target/${{ matrix.target }}/release" -OutDir dist-installer
-          ./installer/smoke-test.ps1 -Installer (Get-ChildItem dist-installer/VaultZip-Setup-*.exe | Select-Object -First 1).FullName
       - name: Package
         shell: bash
         run: |
           mkdir dist
-          if [ -d dist-installer ]; then cp dist-installer/*.exe dist/; fi
-          cp target/${{ matrix.target }}/release/vaultzip${{ matrix.ext }} dist/vaultzip-cli-${{ matrix.target }}${{ matrix.ext }}
-          cp target/${{ matrix.target }}/release/vaultzip-gui${{ matrix.ext }} dist/vaultzip-${{ matrix.target }}${{ matrix.ext }}
+          cp target/${{ matrix.target }}/release/vaultzip dist/vaultzip-cli-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/vaultzip-gui dist/vaultzip-${{ matrix.target }}
           cd dist && (sha256sum * > SHA256SUMS-${{ matrix.target }}.txt 2>/dev/null || shasum -a 256 * > SHA256SUMS-${{ matrix.target }}.txt)
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
+  windows:
+    runs-on: windows-latest
+    # Signing uses a federated Azure identity bound to this environment name.
+    # Add required reviewers to the environment to approve every signed release.
+    environment: release
+    env:
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET }}
+      - run: cargo build --release --target ${{ env.TARGET }}
+
+      # Signing is optional. Set the repository variable SIGNING_ENABLED to
+      # true after completing docs/SIGNING.md. Without it the release is unsigned.
+      - name: Azure login
+        if: vars.SIGNING_ENABLED == 'true'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign executables
+        if: vars.SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.SIGNING_PROFILE }}
+          files: |
+            ${{ github.workspace }}\target\${{ env.TARGET }}\release\vaultzip-gui.exe
+            ${{ github.workspace }}\target\${{ env.TARGET }}\release\vaultzip.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: VaultZip
+          description-url: https://github.com/${{ github.repository }}
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          ./installer/build-installer.ps1 -Version $version -BuildDir "target/${{ env.TARGET }}/release" -OutDir dist-installer
+
+      - name: Sign installer
+        if: vars.SIGNING_ENABLED == 'true'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist-installer
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: VaultZip installer
+          description-url: https://github.com/${{ github.repository }}
+
+      - name: Verify signatures
+        if: vars.SIGNING_ENABLED == 'true'
+        shell: pwsh
+        run: |
+          $files = @(
+            "target/${{ env.TARGET }}/release/vaultzip-gui.exe",
+            "target/${{ env.TARGET }}/release/vaultzip.exe"
+          ) + (Get-ChildItem dist-installer/VaultZip-Setup-*.exe | ForEach-Object { $_.FullName })
+          ./installer/verify-signatures.ps1 -Paths $files
+
+      - name: Installer smoke test
+        shell: pwsh
+        run: ./installer/smoke-test.ps1 -Installer (Get-ChildItem dist-installer/VaultZip-Setup-*.exe | Select-Object -First 1).FullName
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item dist-installer/VaultZip-Setup-*.exe dist/
+          Copy-Item "target/${{ env.TARGET }}/release/vaultzip-gui.exe" "dist/vaultzip-${{ env.TARGET }}.exe"
+          Copy-Item "target/${{ env.TARGET }}/release/vaultzip.exe" "dist/vaultzip-cli-${{ env.TARGET }}.exe"
+          $lines = Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)"
+          }
+          $lines | Set-Content -Encoding ascii "dist/SHA256SUMS-${{ env.TARGET }}.txt"
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*

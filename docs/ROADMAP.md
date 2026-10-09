@@ -15,7 +15,7 @@
 - Explorer right-click menu through per-user registry entries (done)
 - Windows 11 modern context menu through a packaged shell extension
 - Windows installer (Inno Setup) with right-click menu, Open with entry and clean uninstall (done, tested in CI)
-- Code signing for the installer and executables
+- Code signing for the installer and executables: wired into releases, switched on once the Azure setup in docs/SIGNING.md is done
 - Wayland support on Linux
 - Windows Explorer context menu integration
 - Open and extract 7z, tar and gz archives

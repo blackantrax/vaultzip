@@ -4,7 +4,7 @@
 
 1. Update the version in the root Cargo.toml and commit.
 2. Create and push a tag that starts with v, for example v0.1.0.
-3. The Release workflow builds every platform and attaches the files to a GitHub release:
+3. The Release workflow builds every platform and attaches the files to a GitHub release. The Windows job runs in the release environment, so it waits for approval if you added required reviewers:
    - VaultZip-Setup-x.y.z.exe: the Windows installer
    - vaultzip-x86_64-pc-windows-msvc.exe: the portable Windows desktop app
    - vaultzip-cli-x86_64-pc-windows-msvc.exe: the Windows command line tool
@@ -28,10 +28,8 @@ On a Windows machine with Rust and Inno Setup 6:
 
 ## Code signing
 
-Unsigned installers trigger a Windows SmartScreen warning ("Windows protected your PC") until the file builds reputation. For a security product this is the most important trust gap to close before promoting the project. Options, from simplest to strongest:
+Unsigned installers trigger a Windows SmartScreen warning ("Windows protected your PC"). For a security product this is the most important trust gap to close before promoting the project.
 
-1. Azure Trusted Signing: low cost, no hardware token, works from GitHub Actions.
-2. An OV code signing certificate: works, but reputation builds slowly.
-3. An EV code signing certificate: immediate SmartScreen reputation, requires a hardware token or cloud HSM.
+The release workflow already supports signing with Azure Artifact Signing. It is off by default and turns on with the repository variable SIGNING_ENABLED. Follow docs/SIGNING.md for the full setup, including eligibility rules to check first.
 
-Once a certificate or signing service is chosen, sign vaultzip-gui.exe and vaultzip.exe before the installer is built, then sign the installer itself (Inno Setup supports this with the SignTool directive). Until then, publish the SHA-256 checksums with every release, as the workflow already does.
+With signing on, the Windows job signs the executables, builds the installer from them, signs the installer, and verifies every signature before publishing. With signing off, the release is published unsigned together with SHA-256 checksums, so users can still verify downloads.
